@@ -1,6 +1,5 @@
 import pygame
-import csv
-import numpy as np
+import Scores
 pygame.init()
 
 
@@ -9,6 +8,7 @@ class Button:
     pause_buttons = []
     num_buttons = 0
     num_pause_buttons = 0
+
     def __init__(self, x, y, text, game, is_menu_button, image_size=None):
         self.x = x
         self.y = y
@@ -20,10 +20,18 @@ class Button:
         self.visible = True
         self.font = pygame.font.SysFont('Monospace', 15, bold=True)
         self.high_score_font = pygame.font.SysFont('Monospace', 20, bold=True)
-        self.time_font = pygame.font.SysFont('Monospace', 17, bold = False)
-        self.evolution = pygame.image.load("score.png")
-        self.evolution = pygame.transform.scale(self.evolution, (630, 420))
-        
+        self.time_font = pygame.font.SysFont('Monospace', 17, bold=False)
+
+        # Only the information button shows the stats panel. The CSV is read
+        # once here instead of on every frame.
+        self.evolution = None
+        if text == 'information':
+            self.evolution = pygame.transform.scale(
+                pygame.image.load("score.png"), (630, 420))
+            scores, times = Scores.load_scores()
+            self.score_text = "Your High Score:   " + str(int(max(scores))) + " WPM"
+            self.time_text = Scores.format_total_time(float(times.sum()))
+
         # Menu/Game Button Parameters
         if (is_menu_button):
             self.width = image_size[0]
@@ -37,37 +45,35 @@ class Button:
     #      Getters      #
     #####################
     def get_menu_buttons(game):
-        col = 1
         row = 1
         for index in range(len(game.grade_levels)):
             value = game.grade_levels[index]
-            if (col == 1):
-                if (row == 1):
-                    image = game.english
-                    image_size = image.get_size()
-                    x = game.x_menu_col_1 - image_size[0] / 2
-                    y = game.y_menu_col_1
-                elif (row == 2):
-                    image = game.french
-                    image_size = image.get_size()
-                    x = game.x_menu_col_1 - image_size[0] / 2
-                    y = game.y_menu_col_2
-                elif (row == 3):
-                    image = game.german
-                    image_size = image.get_size()
-                    x = game.x_menu_col_1 - image_size[0] / 2
-                    y = game.y_menu_col_3
-                elif (row == 4):
-                    image = game.information
-                    image_size = image.get_size()
-                    x = game.x_information
-                    y = game.y_information
-                elif (row == 5):
-                    image = game.mute
-                    image_size = image.get_size()
-                    x = game.x_information - 20
-                    y = 0.75 * game.screenH
-                row += 1
+            if (row == 1):
+                image = game.english
+                image_size = image.get_size()
+                x = game.x_menu_col_1 - image_size[0] / 2
+                y = game.y_menu_col_1
+            elif (row == 2):
+                image = game.french
+                image_size = image.get_size()
+                x = game.x_menu_col_1 - image_size[0] / 2
+                y = game.y_menu_col_2
+            elif (row == 3):
+                image = game.german
+                image_size = image.get_size()
+                x = game.x_menu_col_1 - image_size[0] / 2
+                y = game.y_menu_col_3
+            elif (row == 4):
+                image = game.information
+                image_size = image.get_size()
+                x = game.x_information
+                y = game.y_information
+            elif (row == 5):
+                image = game.mute
+                image_size = image.get_size()
+                x = game.x_information - 20
+                y = 0.75 * game.screenH
+            row += 1
             Button.add_button(x, y, value, True, image_size, game)
 
         return Button.buttons
@@ -84,10 +90,10 @@ class Button:
             elif (num == 2):
                 image = game.mute
                 image_size = image.get_size()
-                x = game.x_information -20
+                x = game.x_information - 20
                 y = 0.75 * game.screenH
             num += 1
-        Button.add_pause_button(x, y, value, True, image_size, game)
+            Button.add_pause_button(x, y, value, True, image_size, game)
 
 
     #####################
@@ -98,26 +104,26 @@ class Button:
         mouseY = mouse_position[1]
         if (mouseX > self.x and mouseX < self.x + self.width):
             if (mouseY > self.y and mouseY < self.y + self.height):
-                return True         
+                return True
         return False
 
     def add_button(x, y, value, is_menu_button, image_size, game):
         Button.num_buttons += 1
         Button.buttons.append(Button(
-            x, 
-            y, 
+            x,
+            y,
             value,
             game,
             is_menu_button,
             image_size)
         )
         return
-    
+
     def add_pause_button(x, y, value, is_pause_button, image_size, game):
         Button.num_pause_buttons += 1
         Button.pause_buttons.append(Button(
-            x, 
-            y, 
+            x,
+            y,
             value,
             game,
             is_pause_button,
@@ -137,22 +143,6 @@ class Button:
         return
 
     def draw(self, screen, game, hover=None):
-        for i in range(len(DataFiles)):
-
-            scores, time = np.loadtxt(DataFiles[i], skiprows=1, usecols=(1, 2), unpack=True, delimiter=';')
-            high_score = str(max(scores))
-            sum_time = np.sum(time)
-            if (sum_time > 3600):
-                total_time = round(sum_time / 3600, 2)
-                times = "You have spent " + str(total_time) + " hours on the game."
-            elif (sum_time > 60):
-                total_time = round(sum_time / 60, 2)
-                times = "You have spent " + str(total_time) + " minutes on the game."
-            else:
-                times = "You have spent " + str(total_time) + " seconds on the game."
-
-            score = "Your High Score:   " + high_score + " WPM"
-
         if (self.visible):
             if (self.hovering):
                 if (self.text == "1st"):
@@ -165,18 +155,14 @@ class Button:
                     screen.blit(game.information_hovering, (self.x, self.y))
                     draw_rect_alpha(screen, (0, 0, 0, 100), (0, 0, 1080, 800))
                     draw_rect_alpha(screen, (57, 42, 97, 200), (50, 40, 850, 530))
-                    draw_score(screen, score, (300, 535), self.high_score_font)
-                    draw_score(screen, times, (270, 513), self.time_font)
+                    draw_score(screen, self.score_text, (300, 535), self.high_score_font)
+                    draw_score(screen, self.time_text, (270, 513), self.time_font)
                     screen.blit(self.evolution, (160, 70))
                 elif (self.text == 'mute'):
                     screen.blit(game.mute_hovering, (self.x, self.y))
                 elif (self.text == 'quit'):
                     screen.blit(game.quit_hovering, (self.x, self.y))
         return
-
-DataFiles = ['Media/score.csv']
-scores = []
-high_score = []
 
 
 def draw_rect_alpha(surface, color, rect):
