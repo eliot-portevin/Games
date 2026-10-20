@@ -1,22 +1,24 @@
-import install_requirements
+import os
+# Run from the game's own folder so "Media/..." and "score.png" always resolve,
+# whatever directory the game was started from.
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-import pygame
-from PIL import ImageFont
-import sys
-from subprocess import call
-import numpy as np
-import datetime
-import csv
-import random
+import matplotlib
+matplotlib.use("Agg")  # we only save a PNG; the GUI backend crashes alongside SDL on macOS
 import matplotlib.pyplot as plt
 from matplotlib import rcParams
-from matplotlib.ticker import FormatStrFormatter
+from matplotlib.ticker import MaxNLocator
+
+import numpy as np
+import pygame
+from PIL import ImageFont
 
 import GameScreen
 import Meteors as Met
 import Buttons as But
 import EventHandling as Events
 import PlayerInput as PI
+import Scores
 
 pygame.init()
 
@@ -24,7 +26,7 @@ pygame.init()
 #####################
 #     Game Class    #
 #####################
-class Game():   
+class Game():
     def __init__(self):
         # Window
         self.border_width = 2
@@ -36,11 +38,11 @@ class Game():
 
         # Fonts/Colors
         self.button_color = (44, 150, 199)
-        self.button_hover_color = (194,178,128)
-        self.button_text_color = (255,255,255)
+        self.button_hover_color = (194, 178, 128)
+        self.button_text_color = (255, 255, 255)
         self.font_size = 27
         self.master_font = "Media/TravelingTypewriter.ttf"
-        self.text_color = (255,255,255)
+        self.text_color = (255, 255, 255)
         self.font = ImageFont.truetype(self.master_font, self.font_size)
         self.word_font = pygame.font.Font(self.master_font, self.font_size)
 
@@ -53,7 +55,7 @@ class Game():
 
         # Important Variables
         self.word_delay_score_multiplier = 1.0
-        self.up_or_down = 1 # -1 for words up 1 for words down
+        self.up_or_down = 1  # -1 for words up 1 for words down
         self.add_word_seconds = 0
         self.add_words_trigger = 8
         self.max_word_speed = 1
@@ -73,7 +75,7 @@ class Game():
         self.avg_word_length = 0
         self.characters_typed = 0
         self.characters_all = 1
-        self.current_words = [""]
+        self.current_words = []
         self.gross_words_per_min = 0
         self.wordbank = [""]
 
@@ -159,73 +161,62 @@ class Game():
         self.mute_hovering = pygame.image.load("Media/mute_hovering.png")
         self.quit_hovering = pygame.image.load('Media/quit_hovering.png')
 
-        self.evolution = pygame.image.load('score.png')
+        # score.png is created by make_graph(), so it isn't loaded here
+        self.evolution = None
         self.restart_variable = False
-
-        self.high_score = 0
-        self.xValues = []
-        self.average = 0
-        self.median = 0
+        self.pause_high_score = 0
 
     def make_graph(self):
         rcParams['mathtext.fontset'] = 'cm'
         rcParams['font.family'] = 'STIXGeneral'
 
-        ax1 = plt.subplot(1, 1, 1)
-        scores = time = dates = self.xValues = []
+        scores, _ = Scores.load_scores()
+        x_values = np.arange(1, len(scores) + 1)
+        average = np.mean(scores)
+        median = np.median(scores)
+        high_score = np.max(scores)
 
-        '''with open('Media/score.csv', 'r') as file:
-            reader = csv.reader(file, delimiter=';')
-            for row in reader:
-                if len(row) == 0:
-                    continue
-                else:
-                    date = str(row[0])
-                    date = date.replace('-', '/')
-                    dates.append(date)'''
+        fig, ax1 = plt.subplots()
 
-        scores, time = np.loadtxt('Media/score.csv', skiprows=1, usecols=(1, 2), unpack=True, delimiter=';')
+        # Plotting values (a lone score gets a marker so it is visible)
+        ax1.plot(x_values, scores, color='darkslategrey', label='Scores', linewidth=2,
+                 marker='o' if len(scores) == 1 else 'None')
+        ax1.axhline(y=average, linestyle='dashdot', label='Mean', color='teal')
+        ax1.axhline(y=high_score, linestyle='dashdot', label='High Score', color='indigo', alpha=0.7)
+        ax1.axhline(y=median, linestyle=':', label='Median', color='peru', alpha=1)
+        ax1.fill_between(x_values, scores, average, color='teal', alpha=0.3)
 
-        self.high_score = max(scores)
-        self.xValues = np.arange(len(scores))
-        self.average = np.mean(scores)
-        self.median = np.median(scores)
-
-        # Plotting values
-        ax1.xaxis.set_major_formatter(FormatStrFormatter('%.0f'))
-        ax1.plot(self.xValues, scores, color='darkslategrey', label='Scores', linewidth=2)
-        ax1.axhline(y=self.average, linestyle='dashdot', label='Mean', color='teal')
-        ax1.axhline(y=self.high_score, linestyle='dashdot', label='High Score', color='indigo', alpha=0.7)
-        ax1.axhline(y=self.median, linestyle=':', label='Median', color='peru', alpha=1)
-        plt.xticks(ha='right', color='k', alpha=0.9)
-        plt.yticks(color='k', alpha=0.9)
+        # Whole-number game numbers only
+        ax1.xaxis.set_major_locator(MaxNLocator(integer=True, nbins=6))
+        ax1.tick_params(axis='both', colors=(0, 0, 0, 0.9))
 
         # Setting labels
-        plt.locator_params(nbins=6)
         ax1.set_xlabel('Game Nr.', fontsize=12, fontweight='bold')
         ax1.xaxis.set_label_coords(1.05, -0.06)
         ax1.set_ylabel('Score in WPM', rotation=0, fontsize=12, fontweight='bold')
         ax1.yaxis.set_label_coords(0, 1.035)
-        ax1.fill_between(self.xValues, scores, self.average, color='teal', alpha=0.3)
 
         # Setting grid and legend
         ax1.grid(True)
         ax1.grid(which='minor', alpha=0.2, linestyle='--')
         ax1.legend(loc='upper right', ncol=1, prop={'size': 9})
 
-        # Showing and saving
-        plt.savefig('score.png', bbox_inches='tight')
+        # Saving
+        fig.savefig('score.png', bbox_inches='tight')
+        plt.close(fig)
         self.evolution = pygame.image.load('score.png')
-        self.high_score = 0
-        self.average = 0
-        self.median = 0
-        scores = time = dates = self.xValues = []
-        plt.clf()
-        plt.close()
 
     #####################
     #      Getters      #
     #####################
+    def text_size(self, text):
+        """(width, height) in pixels of `text` in the master font.
+
+        Replaces ImageFont.getsize(), which was removed in Pillow 10.
+        """
+        left, top, right, bottom = self.font.getbbox(text)
+        return right - left, bottom - top
+
     def get_menu_buttons(self):
         return But.Button.get_menu_buttons(self)
 
@@ -235,7 +226,7 @@ class Game():
     def get_score_text_size(self, score, return_flag=None):
         convert_text = str(score) + str(self.border_width)
         text = self.score_prompt + convert_text
-        width_height = self.font.getsize(text)
+        width_height = self.text_size(text)
         if (return_flag == "width"):
             return width_height[0]
         elif (return_flag == "height"):
@@ -283,7 +274,7 @@ class Game():
         return
 
     def draw_bg_image(self, screen):
-        screen.blit(self.bg_image, (0,0))
+        screen.blit(self.bg_image, (0, 0))
         return
 
     def draw_corner_meteors(self, screen):
@@ -292,14 +283,14 @@ class Game():
         return
 
     def draw_blink_text(self, screen, text, start_screen):
-        font_size = self.font.getsize(text)
+        font_size = self.text_size(text)
         x = ((self.screenW / 2) - (font_size[0] / 2))
         if (start_screen):
             y = (self.screenH / 2) - (font_size[1] / 2)
         else:
             y = ((self.screenH / 2) - (font_size[1] / 2) + self.top_padding)
         text = self.word_font.render(text, 1, self.text_color)
-        screen.blit(text, (x,y))
+        screen.blit(text, (x, y))
         return
 
     def draw_meteors(self, screen):
@@ -361,7 +352,7 @@ def draw_menu_header(screen, game):
     image_size = game.menu_header.get_size()
     x = (game.screenW - image_size[0]) / 2
     y = 50
-    screen.blit(game.menu_header, (x,y))
+    screen.blit(game.menu_header, (x, y))
     return
 
 def draw_menu(screen, game, buttons):
@@ -401,7 +392,7 @@ def draw_title(screen, game):
     text_size = game.title_text.get_size()
     x = (game.screenW - text_size[0]) / 2
     y = game.top_padding - 30
-    screen.blit(game.title_text, (x,y))
+    screen.blit(game.title_text, (x, y))
     return
 
 def draw_screen(screen, game, start_screen=False):
@@ -438,30 +429,23 @@ def start_screen(screen, game):
 #####################
 #        Main       #
 #####################
-def restart():
-    game = Game()
-    screen = game.set_screen()
-    game.set_player_input()
-    game.make_graph()
-
-    menu_screen(screen, game)
-    start_screen(screen, game)
-    GameScreen.play(screen, game)
-    if game.restart_variable:
-        restart()
-
 def main():
-    game = Game()
-    screen = game.set_screen()
-    game.set_player_input()
-    game.make_graph()
+    show_title = True
+    while True:
+        game = Game()
+        screen = game.set_screen()
+        game.set_player_input()
+        game.make_graph()
 
-    title_screen(screen, game)
-    menu_screen(screen, game)
-    start_screen(screen, game)
-    GameScreen.play(screen, game)
-    if game.restart_variable:
-        restart()
+        if show_title:
+            title_screen(screen, game)
+            show_title = False
+        menu_screen(screen, game)
+        start_screen(screen, game)
+        GameScreen.play(screen, game)
+        if not game.restart_variable:
+            break
+    pygame.quit()
 
 
 if __name__ == "__main__":
