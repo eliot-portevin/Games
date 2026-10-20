@@ -2,40 +2,34 @@ import pygame
 import pygame.locals as pl
 import sys
 import GameScreen
-import TypeeTypo
-import csv
-from datetime import date
-from subprocess import call
+import Scores
 pygame.init()
 
+
+def load_wordbank(path):
+    """One word per line; blank lines (e.g. a trailing newline) are dropped."""
+    with open(path, 'r', encoding='utf-8') as f:
+        return [w.strip() for w in f.read().splitlines() if w.strip()]
+
 class Wordbanks:
-    my_file_english = open('Media/words.txt', 'r')
-    my_file_french = open('Media/mots.txt', 'r')
-    my_file_german = open('Media/Wörtern.txt', 'r')
-    content_english = my_file_english.read()
-    content_french = my_file_french.read()
-    content_german = my_file_german.read()
-    words_english = content_english.split('\n')
-    words_french = content_french.split('\n')
-    words_german = content_german.split('\n')
+    words_english = load_wordbank('Media/words.txt')
+    words_french = load_wordbank('Media/mots.txt')
+    words_german = load_wordbank('Media/Wörtern.txt')
+
+
 #####################
 #   Game Specifics  #
 #####################
+def save_current_score(game):
+    Scores.save_score(GameScreen.get_words_per_min(game), game.seconds)
+
 def quit_game(game):
-    gwpm = int(GameScreen.get_words_per_min(game))
-    today = str(date.today())
-    time = game.seconds
-    if gwpm != 0:
-        with open('Media/score.csv', mode='a') as scores:
-            scores = csv.writer(scores, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-
-            scores.writerow([str(today), int(gwpm), int(time)])
-
+    save_current_score(game)
     pygame.quit()
     sys.exit(0)
 
 def play_music(game, music):
-    music = pygame.mixer.music.load(music)
+    pygame.mixer.music.load(music)
     pygame.mixer.music.play(-1)
     game.music_playing = True
     return
@@ -50,10 +44,7 @@ def update_seconds(game, delay):
 
 def blink_text(game, screen, text, start_screen):
     if (game.update_seconds(game.text_blink_delay)):
-        if (game.blinking):
-            game.blinking = False
-        else:
-            game.blinking = True
+        game.blinking = not game.blinking
     if (game.blinking):
         game.draw_blink_text(screen, text, start_screen)
     return
@@ -92,7 +83,7 @@ def check_title_events(game):
     events = pygame.event.get()
     for event in events:
         if (event.type == pygame.QUIT):
-                    quit_game(game)
+            quit_game(game)
         elif (event.type == pygame.KEYDOWN):
             if (event.key == pygame.K_SPACE):
                 return True
@@ -103,12 +94,9 @@ def check_title_events(game):
 #    Menu Events    #
 #####################
 def get_avg_word_length(wordbank):
-    num_words = len(wordbank)
-    total = 0
-    for word in wordbank:
-        total += len(word)
-    avg_length = 4.5
-    return avg_length
+    # Standard typing-test convention (the old code computed the real average
+    # and then ignored it).
+    return 4.5
 
 def check_menu_mouse_position(game, mouse_position, button):
     if (button.is_over(mouse_position)):
@@ -126,9 +114,6 @@ def check_menu_mouse_position(game, mouse_position, button):
         button.play_sound = True
     return
 
-click_rect  = pygame.Rect(50, 220, 300, 500)
-mute_rect = pygame.Rect(800, 0, 500, 1000)
-
 def check_button(game, button):
     if (button.text == "1st"):
         game.wordbank = Wordbanks.words_english
@@ -142,23 +127,19 @@ def check_button(game, button):
         if game.music_playing is False:
             pygame.mixer.music.unpause()
             game.music_playing = True
-            return False
         else:
             pygame.mixer.music.pause()
             game.music_playing = False
-            return False
-    if (game.wordbank != None):
-        avg_word_length = get_avg_word_length(game.wordbank)
-        game.avg_word_length = avg_word_length
-        return True
-    return False
+        return False
+    game.avg_word_length = get_avg_word_length(game.wordbank)
+    return True
 
 def check_menu_events(game, buttons):
     mouse_position = pygame.mouse.get_pos()
     events = pygame.event.get()
     for event in events:
         if (event.type == pygame.QUIT):
-                    quit_game(game)
+            quit_game(game)
         elif (event.type == pygame.MOUSEMOTION):
             for button in buttons:
                 check_menu_mouse_position(game, mouse_position, button)
@@ -176,10 +157,7 @@ def click_button(mouse_position, buttons, game):
                 game.words_moving = True
                 button.visible = True
             elif (button.text == "Pause"):
-                if (game.words_moving):
-                    game.words_moving = False
-                else:
-                    game.words_moving = True
+                game.words_moving = not game.words_moving
             elif (button.text == "Mute"):
                 if (game.music_playing):
                     pygame.mixer.music.pause()
@@ -190,7 +168,6 @@ def click_button(mouse_position, buttons, game):
     return
 
 def check_game_events(game, buttons):
-    mouse_position = pygame.mouse.get_pos()
     events = pygame.event.get()
     for event in events:
         if (event.type == pygame.QUIT):
@@ -200,20 +177,14 @@ def check_game_events(game, buttons):
                 if (game.words_moving):
                     game.words_moving = False
                     game.is_paused = True
+                    game.pause_high_score = Scores.get_high_score()
                 else:
                     game.words_moving = True
                     game.is_paused = False
             if game.is_paused:
                 if event.key == pygame.K_r:
                     game.restart_variable = True
-                    gwpm = int(GameScreen.get_words_per_min(game))
-                    today = str(date.today())
-                    time = game.seconds
-                    if gwpm != 0:
-                        with open('Media/score.csv', mode='a') as scores:
-                            scores = csv.writer(scores, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-
-                            scores.writerow([str(today), int(gwpm), int(time)])
+                    save_current_score(game)
 
     update_player_input(game, events)
     return True
