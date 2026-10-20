@@ -9,7 +9,7 @@ class Word(object):
         self.speed = speed * game.up_or_down
 
         # Calculate px size for word width and height
-        text_size = game.font.getsize(self.word)
+        text_size = game.text_size(self.word)
         self.width = text_size[0]
         self.height = text_size[1]
 
@@ -43,35 +43,29 @@ class Word(object):
         return (x_size, meteor_size[1])
 
     def get_word_start_x(word, game):
-        word_size = game.font.getsize(word)
-        word_x_offset = word_size[0]
-        x_max = game.screenW - word_x_offset
-        x = random.randint(0, x_max)
-        return x
+        word_x_offset = game.text_size(word)[0]
+        x_max = max(game.screenW - word_x_offset, 0)
+        return random.randint(0, x_max)
 
     def get_speed(word_length, max_speed):
-        if (word_length == 2): 
+        if (word_length == 2):
             return max_speed * random.uniform(0.7, 1)
-        elif (word_length == 3): 
+        elif (word_length == 3):
             return max_speed * random.uniform(0.6, 0.9)
-        elif (word_length == 4): 
+        elif (word_length == 4):
             return max_speed * random.uniform(0.5, 0.75)
-        elif (word_length == 5): 
+        elif (word_length == 5):
             return max_speed * random.uniform(0.4, 0.7)
-        elif (word_length == 6): 
+        elif (word_length == 6):
             return max_speed * random.uniform(0.3, 0.65)
-        else: 
+        else:
             return max_speed * random.uniform(0.2, 0.6)
 
     def word_str_to_obj(game):
-        new_words = []
-        for word in game.current_words:
-            if (type(word) is str):
-                new_words.append(Word(word, game))
-            else:
-                new_words.append(word)
-        game.current_words.clear()
-        game.current_words = new_words
+        game.current_words = [
+            Word(word, game) if isinstance(word, str) else word
+            for word in game.current_words
+        ]
         return
 
 
@@ -96,14 +90,13 @@ def move_word_down(word, screen, game):
     return
 
 def move_words(screen, game):
-    for word in game.current_words:
-        try:
-            if (game.up_or_down == -1):
-                move_word_up(word, screen, game)
-            else:
-                move_word_down(word, screen, game)
-        except AttributeError:
-            break
+    # Iterate over a copy: missed_word() removes from the list, which would
+    # otherwise make the next word skip a frame of movement.
+    for word in list(game.current_words):
+        if (game.up_or_down == -1):
+            move_word_up(word, screen, game)
+        else:
+            move_word_down(word, screen, game)
     return
 
 
@@ -113,21 +106,26 @@ def move_words(screen, game):
 def missed_word(word, screen, game):
     game.current_words.remove(word)
     game.add_word_meteor(word, screen)
-    game.button_hover_sound.play()
+    if game.music_playing:
+        game.button_hover_sound.play()
     return
 
-def remove_words_from_screen(screen, game): # TODO fix error
-    if (game.player_input):
-        player_input = game.player_input.split(' ')
-        for word in reversed(game.current_words):
-            for player_word in player_input:
-                if (player_word == word.word):
-                    game.characters_typed += len(word.word) + 1
-                    try:
-                        game.current_words.remove(word)   # TODO fix (list.remove(x): x not in list) exception
-                    except:
-                        continue
-                    game.add_word_meteor(word, screen)
-                    if game.music_playing == True:
-                        game.button_hover_sound.play()
+def remove_words_from_screen(screen, game):
+    if not game.player_input:
+        return
+    typed_words = game.player_input.split(' ')
+    # Consume the input. Before, it stayed set forever, so every new word
+    # matching something typed earlier was removed (and scored) automatically.
+    game.player_input = None
+    for typed in typed_words:
+        if not typed:
+            continue
+        for word in game.current_words:
+            if word.word == typed:
+                game.characters_typed += len(word.word) + 1
+                game.current_words.remove(word)
+                game.add_word_meteor(word, screen)
+                if game.music_playing:
+                    game.button_hover_sound.play()
+                break  # one typed word clears one on-screen word
     return
